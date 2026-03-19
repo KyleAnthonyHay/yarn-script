@@ -1,10 +1,17 @@
 :root {
-  --background: #090d14;
-  --foreground: #f4f1ea;
-  --text-primary: #f4f1ea;
-  --text-muted: #aab1bf;
-  --text-dim: #59606b;
-  --border-color: rgba(255, 255, 255, 0.11);
+  --background: #0a0a0b;
+  --text-primary: #f0eeeb;
+  --text-secondary: #b0ada8;
+  --text-muted: #6b6966;
+  --text-dim: #3a3836;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(255, 255, 255, 0.18);
+  --ring: rgba(255, 255, 255, 0.06);
+  --surface: rgba(255, 255, 255, 0.03);
+  --surface-raised: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.07);
+  --accent: #e8e4df;
+  --error: #ff8888;
 }
 
 html {
@@ -21,12 +28,9 @@ body {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  color: var(--foreground);
-  background:
-    radial-gradient(circle at top left, rgba(255, 157, 92, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(109, 166, 255, 0.14), transparent 24%),
-    linear-gradient(180deg, #111724 0%, #090d14 100%);
-  font-family: var(--font-ibm-plex), sans-serif;
+  color: var(--text-primary);
+  background: var(--background);
+  font-family: var(--font-ibm-plex), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

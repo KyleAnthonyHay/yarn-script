@@ -1,17 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAssemblyAiStreaming } from "@/hooks/useAssemblyAiStreaming";
 import styles from "./page.module.css";
 
-const DEFAULT_SCRIPT = `Welcome to YarnScript.
+type View = "input" | "teleprompter";
+type TextSize = "S" | "M" | "L";
+const TEXT_SIZES: TextSize[] = ["S", "M", "L"];
 
-Paste your script, tap read back transcript, and start speaking.
-As AssemblyAI transcribes your voice, the words you have already said will turn white.`;
+const WORDS_PER_LINE = 5;
+const VISIBLE_LINES = 4;
+
+const DEFAULT_SCRIPT = `Welcome to YarnScript. Paste your script, tap read back transcript, and start speaking. As AssemblyAI transcribes your voice, the words you have already said will turn bright. You can go off script, skip words, or ad-lib and the teleprompter will keep up with you. The goal is to make reading feel natural and effortless, so you can focus on delivery instead of losing your place.`;
 
 export default function Home() {
+  const [view, setView] = useState<View>("input");
   const [script, setScript] = useState(DEFAULT_SCRIPT);
-  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [highlights, setHighlights] = useState(true);
+  const [textSize, setTextSize] = useState<TextSize>("S");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const {
     state,
     error,
@@ -20,157 +28,260 @@ export default function Home() {
     stopSession,
     setScript: syncTranscriptScript,
   } = useAssemblyAiStreaming(script);
-  const { scriptTokens, stableTranscript, partialTranscript, alignment } = transcript;
 
+  const { scriptTokens, alignment } = transcript;
   const spokenCount = alignment.confirmedIndex + 1;
-  const totalCount = scriptTokens.length;
 
-  async function handlePaste() {
-    try {
-      const pastedText = await navigator.clipboard.readText();
-      if (pastedText.trim().length > 0) {
-        setScript(pastedText);
-        syncTranscriptScript(pastedText);
-      }
-      setPasteError(null);
-    } catch {
-      setPasteError("Clipboard access was denied. Paste directly into the field.");
+  const teleprompterRef = useRef<HTMLDivElement>(null);
+
+  const lines: { index: number; raw: string }[][] = [];
+  let currentLine: { index: number; raw: string }[] = [];
+  for (const token of scriptTokens) {
+    currentLine.push(token);
+    if (currentLine.length === WORDS_PER_LINE) {
+      lines.push(currentLine);
+      currentLine = [];
     }
+  }
+  if (currentLine.length > 0) lines.push(currentLine);
+
+  const activeLineIndex = lines.findIndex((line) =>
+    line.some((t) => t.index > alignment.confirmedIndex),
+  );
+
+  const spokenOnActiveLine =
+    activeLineIndex >= 0
+      ? lines[activeLineIndex].filter((t) => t.index <= alignment.confirmedIndex).length
+      : 0;
+  const activeLineLength = activeLineIndex >= 0 ? lines[activeLineIndex].length : 1;
+  const pastMidpoint = spokenOnActiveLine >= Math.ceil(activeLineLength / 2);
+
+  const scrollTargetIndex = pastMidpoint && activeLineIndex < lines.length - 1
+    ? activeLineIndex + 1
+    : activeLineIndex;
+
+  useEffect(() => {
+    if (view !== "teleprompter" || !teleprompterRef.current) return;
+    const target = teleprompterRef.current.querySelector(
+      `[data-line-idx="${scrollTargetIndex}"]`,
+    );
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [spokenCount, view, scrollTargetIndex]);
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = reader.result as string;
+      if (text.trim().length > 0) {
+        setScript(text);
+        syncTranscriptScript(text);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   }
 
   async function handleStart() {
+    setView("teleprompter");
     await startSession();
   }
 
-  const sessionLabel = {
-    idle: "Idle",
-    connecting: "Connecting",
-    listening: "Listening",
-    error: "Error",
-    stopped: "Stopped",
-  }[state];
+  function handleBack() {
+    stopSession();
+    setView("input");
+  }
 
-  return (
-    <main className={styles.page}>
-      <section className={styles.hero}>
-        <div>
-          <p className={styles.eyebrow}>YarnScript</p>
-          <h1>Live teleprompter highlighting from your voice.</h1>
-        </div>
-        <div className={styles.statusCard} data-state={state}>
-          <span className={styles.statusLabel}>Session</span>
-          <strong>{sessionLabel}</strong>
-          <span className={styles.statusDot} data-state={state} />
-        </div>
-      </section>
+  const isSessionActive = state === "connecting" || state === "listening";
+  const canStart = script.trim().length > 0 && !isSessionActive;
 
-      <section className={styles.grid}>
-        <div className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <p className={styles.panelEyebrow}>Script Input</p>
-              <h2>Paste the script you want to read.</h2>
+  if (view === "input") {
+    return (
+      <main className={styles.page}>
+        <div className={styles.inputView}>
+          <header className={styles.brand}>
+            <span className={styles.logo}>Y</span>
+            <span className={styles.brandName}>YarnScript</span>
+          </header>
+
+          <h1 className={styles.headline}>
+            Paste your script,<br />
+            then read it back.
+          </h1>
+
+          <div className={styles.inputCard}>
+            <div className={styles.textareaWrap}>
+              <textarea
+                className={styles.textarea}
+                value={script}
+                onChange={(e) => {
+                  setScript(e.target.value);
+                  syncTranscriptScript(e.target.value);
+                }}
+                placeholder="Paste transcript here"
+                spellCheck={false}
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt"
+                className={styles.hiddenInput}
+                onChange={handleFileUpload}
+              />
+              <button
+                type="button"
+                className={styles.uploadChip}
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Upload .txt file"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span className={styles.tooltip}>Upload .txt file</span>
+              </button>
             </div>
+
             <button
               type="button"
-              className={styles.primaryButton}
+              className={styles.startButton}
               onClick={handleStart}
-              disabled={state === "connecting" || state === "listening" || !script.trim()}
+              disabled={!canStart}
             >
               Read Back Transcript
             </button>
+
+            {error && <p className={styles.errorText}>{error}</p>}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className={styles.page}>
+      <div className={styles.teleprompterView}>
+        <header className={styles.teleprompterBar}>
+          <button type="button" className={styles.backButton} onClick={handleBack}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+
+          <div className={styles.statusPill} data-state={state}>
+            <span className={styles.statusDot} data-state={state} />
+            <span>
+              {{ idle: "Ready", connecting: "Connecting", listening: "Listening", error: "Error", stopped: "Done" }[state]}
+            </span>
           </div>
 
-          <div className={styles.textareaWrap}>
-            <textarea
-              className={styles.textarea}
-              value={script}
-              onChange={(event) => {
-                const nextScript = event.target.value;
-                setScript(nextScript);
-                syncTranscriptScript(nextScript);
-              }}
-              placeholder="Paste or write your script here..."
-              spellCheck={false}
-            />
-            <button type="button" className={styles.pasteButton} onClick={handlePaste}>
-              Paste
+          <div className={styles.barActions}>
+            <div className={styles.sizePicker}>
+              {TEXT_SIZES.map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  className={styles.sizeOption}
+                  data-active={textSize === size ? "true" : "false"}
+                  onClick={() => setTextSize(size)}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className={styles.highlightToggle}
+              data-active={highlights ? "true" : "false"}
+              onClick={() => setHighlights((h) => !h)}
+            >
+              {highlights ? "Highlights on" : "Highlights off"}
             </button>
-          </div>
 
-          <div className={styles.metaRow}>
-            <p>
-              {spokenCount} / {totalCount} words matched
-            </p>
-            <div className={styles.actions}>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={stopSession}
-                disabled={state !== "connecting" && state !== "listening"}
-              >
+            {isSessionActive && (
+              <button type="button" className={styles.stopButton} onClick={stopSession}>
                 Stop
               </button>
-            </div>
-          </div>
+            )}
 
-          {(error ?? pasteError) ? (
-            <p className={styles.errorText}>{error ?? pasteError}</p>
-          ) : (
-            <p className={styles.hintText}>
-              Add your AssemblyAI key as <code>ASSEMBLYAI_API_KEY</code> in a local
-              environment file before starting a session.
-            </p>
-          )}
-        </div>
-
-        <div className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <p className={styles.panelEyebrow}>Live Script</p>
-              <h2>Spoken words brighten as the transcript advances.</h2>
-            </div>
-          </div>
-
-          <div className={styles.teleprompter}>
-            {scriptTokens.length > 0 ? (
-              scriptTokens.map((token) => (
-                <span
-                  key={token.index}
-                  className={
-                    token.index <= alignment.confirmedIndex
-                      ? styles.spokenToken
-                      : styles.pendingToken
-                  }
-                >
-                  {token.raw}
-                </span>
-              ))
-            ) : (
-              <p className={styles.emptyState}>Your highlighted script will appear here.</p>
+            {!isSessionActive && (
+              <button
+                type="button"
+                className={styles.restartButton}
+                onClick={() => startSession()}
+              >
+                Restart
+              </button>
             )}
           </div>
+        </header>
 
-          <div className={styles.debugGrid}>
-            <div className={styles.debugCard}>
-              <span className={styles.debugLabel}>Stable transcript</span>
-              <p>{stableTranscript || "No confirmed transcript yet."}</p>
-            </div>
-            <div className={styles.debugCard}>
-              <span className={styles.debugLabel}>Partial transcript</span>
-              <p>{partialTranscript || "Waiting for speech..."}</p>
-            </div>
-            <div className={styles.debugCard}>
-              <span className={styles.debugLabel}>Matched phrase</span>
-              <p>{alignment.matchedPhrase || "No forward match yet."}</p>
-            </div>
-            <div className={styles.debugCard}>
-              <span className={styles.debugLabel}>Confidence</span>
-              <p>{alignment.confidence.toFixed(2)}</p>
-            </div>
-          </div>
+        <div className={styles.teleprompter} ref={teleprompterRef} data-size={textSize}>
+          <div className={styles.teleprompterSpacer} />
+          {lines.length > 0 ? (
+            lines.map((line, lineIdx) => {
+              const isActive =
+                lineIdx === activeLineIndex ||
+                (activeLineIndex === -1 && lineIdx === lines.length - 1);
+              const isPast =
+                activeLineIndex !== -1
+                  ? lineIdx < activeLineIndex
+                  : true;
+              const isFuture = activeLineIndex !== -1 && lineIdx > activeLineIndex;
+              const distanceFromActive = activeLineIndex !== -1 ? Math.abs(lineIdx - activeLineIndex) : 0;
+              const isVisible = distanceFromActive <= VISIBLE_LINES;
+
+              return (
+                <div
+                  key={lineIdx}
+                  className={styles.teleprompterLine}
+                  data-line-idx={lineIdx}
+                  data-line-active={isActive ? "true" : "false"}
+                  data-line-past={isPast && !isActive ? "true" : "false"}
+                  data-line-future={isFuture ? "true" : "false"}
+                  data-line-visible={isVisible ? "true" : "false"}
+                >
+                  {line.map((token) => {
+                    const lineHasSpoken = line.some((t) => t.index <= alignment.confirmedIndex);
+                    const isSpoken = highlights
+                      ? token.index <= alignment.confirmedIndex
+                      : isPast || (isActive && lineHasSpoken);
+
+                    return (
+                      <span
+                        key={token.index}
+                        className={isSpoken ? styles.spokenWord : styles.pendingWord}
+                      >
+                        {token.raw}
+                      </span>
+                    );
+                  })}
+                </div>
+              );
+            })
+          ) : (
+            <p className={styles.emptyState}>No script loaded.</p>
+          )}
+          <div className={styles.teleprompterSpacer} />
         </div>
-      </section>
+
+        <div className={styles.progressBar}>
+          <div
+            className={styles.progressFill}
+            style={{
+              width: scriptTokens.length > 0
+                ? `${(spokenCount / scriptTokens.length) * 100}%`
+                : "0%",
+            }}
+          />
+        </div>
+      </div>
     </main>
   );
 }
