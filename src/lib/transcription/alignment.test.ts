@@ -53,6 +53,14 @@ describe("computeAlignment", () => {
     expect(result.confirmedIndex).toBe(6);
   });
 
+  it("does not jump ahead on an isolated future word", () => {
+    const scriptTokens = tokenizeScript("read the next exact phrase now");
+
+    const result = computeAlignment(scriptTokens, "read the phrase", -1);
+
+    expect(result.confirmedIndex).toBe(1);
+  });
+
   it("ignores ad-libbed words without regressing progress", () => {
     const scriptTokens = tokenizeScript("this teleprompter follows your pace");
 

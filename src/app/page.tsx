@@ -6,7 +6,9 @@ import styles from "./page.module.css";
 
 type View = "input" | "teleprompter";
 type TextSize = "S" | "M" | "L";
+type HighlightMode = "off" | "line" | "word";
 const TEXT_SIZES: TextSize[] = ["S", "M", "L"];
+const HIGHLIGHT_MODES: HighlightMode[] = ["off", "line", "word"];
 
 const WORDS_PER_LINE = 5;
 const VISIBLE_LINES = 4;
@@ -16,7 +18,7 @@ const DEFAULT_SCRIPT = `Welcome to YarnScript. Paste your script, tap read back 
 export default function Home() {
   const [view, setView] = useState<View>("input");
   const [script, setScript] = useState(DEFAULT_SCRIPT);
-  const [highlights, setHighlights] = useState(true);
+  const [highlightMode, setHighlightMode] = useState<HighlightMode>("off");
   const [textSize, setTextSize] = useState<TextSize>("S");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -26,13 +28,16 @@ export default function Home() {
     transcript,
     startSession,
     stopSession,
+    resetSession,
     setScript: syncTranscriptScript,
   } = useAssemblyAiStreaming(script);
 
   const { scriptTokens, alignment } = transcript;
   const spokenCount = alignment.confirmedIndex + 1;
+  const isComplete = scriptTokens.length > 0 && spokenCount >= scriptTokens.length;
 
   const teleprompterRef = useRef<HTMLDivElement>(null);
+  const scrollAnimationFrameRef = useRef<number | null>(null);
 
   const lines: { index: number; raw: string }[][] = [];
   let currentLine: { index: number; raw: string }[] = [];
@@ -62,13 +67,53 @@ export default function Home() {
 
   useEffect(() => {
     if (view !== "teleprompter" || !teleprompterRef.current) return;
-    const target = teleprompterRef.current.querySelector(
+
+    const container = teleprompterRef.current;
+    const target = container.querySelector<HTMLElement>(
       `[data-line-idx="${scrollTargetIndex}"]`,
     );
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    if (!target) return;
+
+    if (scrollAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(scrollAnimationFrameRef.current);
     }
-  }, [spokenCount, view, scrollTargetIndex]);
+
+    const targetScrollTop =
+      target.offsetTop - container.clientHeight / 2 + target.clientHeight / 2;
+    const startScrollTop = container.scrollTop;
+    const distance = targetScrollTop - startScrollTop;
+    const duration = 420;
+    const startTime = performance.now();
+
+    const easeInOutCubic = (progress: number) =>
+      progress < 0.5
+        ? 4 * progress * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+    const animateScroll = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easedProgress = easeInOutCubic(progress);
+
+      container.scrollTop = startScrollTop + distance * easedProgress;
+
+      if (progress < 1) {
+        scrollAnimationFrameRef.current = requestAnimationFrame(animateScroll);
+      } else {
+        scrollAnimationFrameRef.current = null;
+      }
+    };
+
+    scrollAnimationFrameRef.current = requestAnimationFrame(animateScroll);
+
+    return () => {
+      if (scrollAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(scrollAnimationFrameRef.current);
+        scrollAnimationFrameRef.current = null;
+      }
+    };
+  }, [view, scrollTargetIndex, textSize]);
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -93,6 +138,13 @@ export default function Home() {
   function handleBack() {
     stopSession();
     setView("input");
+  }
+
+  function handleRewind() {
+    resetSession();
+    if (teleprompterRef.current) {
+      teleprompterRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
   const isSessionActive = state === "connecting" || state === "listening";
@@ -195,14 +247,19 @@ export default function Home() {
               ))}
             </div>
 
-            <button
-              type="button"
-              className={styles.highlightToggle}
-              data-active={highlights ? "true" : "false"}
-              onClick={() => setHighlights((h) => !h)}
-            >
-              {highlights ? "Highlights on" : "Highlights off"}
-            </button>
+            <div className={styles.modePicker}>
+              {HIGHLIGHT_MODES.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={styles.modeOption}
+                  data-active={highlightMode === mode ? "true" : "false"}
+                  onClick={() => setHighlightMode(mode)}
+                >
+                  {mode[0].toUpperCase() + mode.slice(1)}
+                </button>
+              ))}
+            </div>
 
             {isSessionActive && (
               <button type="button" className={styles.stopButton} onClick={stopSession}>
@@ -222,7 +279,12 @@ export default function Home() {
           </div>
         </header>
 
-        <div className={styles.teleprompter} ref={teleprompterRef} data-size={textSize}>
+        <div
+          className={styles.teleprompter}
+          ref={teleprompterRef}
+          data-size={textSize}
+          data-highlight-mode={highlightMode}
+        >
           <div className={styles.teleprompterSpacer} />
           {lines.length > 0 ? (
             lines.map((line, lineIdx) => {
@@ -248,10 +310,14 @@ export default function Home() {
                   data-line-visible={isVisible ? "true" : "false"}
                 >
                   {line.map((token) => {
-                    const lineHasSpoken = line.some((t) => t.index <= alignment.confirmedIndex);
-                    const isSpoken = highlights
-                      ? token.index <= alignment.confirmedIndex
-                      : isPast || (isActive && lineHasSpoken);
+                    const isSpoken =
+                      highlightMode === "off"
+                        ? true
+                        : highlightMode === "word"
+                        ? token.index <= alignment.confirmedIndex
+                        : highlightMode === "line"
+                          ? isPast || isActive
+                          : false;
 
                     return (
                       <span
@@ -267,6 +333,15 @@ export default function Home() {
             })
           ) : (
             <p className={styles.emptyState}>No script loaded.</p>
+          )}
+          {isComplete && (
+            <button
+              type="button"
+              className={styles.rewindButton}
+              onClick={handleRewind}
+            >
+              Rewind
+            </button>
           )}
           <div className={styles.teleprompterSpacer} />
         </div>

@@ -46,6 +46,7 @@ interface UseAssemblyAiStreamingResult {
   transcript: TranscriptManagerSnapshot;
   startSession: () => Promise<void>;
   stopSession: () => void;
+  resetSession: () => void;
   setScript: (script: string) => void;
 }
 
@@ -197,6 +198,14 @@ export function useAssemblyAiStreaming(initialScript = ""): UseAssemblyAiStreami
     setState((currentState) => (currentState === "idle" ? currentState : "stopped"));
   }
 
+  function resetSession() {
+    stopSession();
+    setError(null);
+    transcriptManagerRef.current.resetSession();
+    setTranscript(transcriptManagerRef.current.getSnapshot());
+    setState("idle");
+  }
+
   function handleMessage(message: AssemblyAiMessage) {
     if (message.type === "Begin") {
       setState("listening");
@@ -228,6 +237,7 @@ export function useAssemblyAiStreaming(initialScript = ""): UseAssemblyAiStreami
     transcript,
     startSession,
     stopSession,
+    resetSession,
     setScript,
   };
 

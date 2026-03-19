@@ -116,13 +116,19 @@ export function computeAlignment(
       continue;
     }
 
-    const lookaheadIndex = findLookaheadMatch(scriptTokens, scriptCursor, transcriptToken);
+    const lookaheadMatch = findLookaheadMatch({
+      scriptTokens,
+      transcriptTokens: recentTranscriptTokens,
+      scriptCursor,
+      transcriptIndex: index,
+    });
 
-    if (lookaheadIndex !== -1) {
-      confirmedIndex = lookaheadIndex;
-      scriptCursor = lookaheadIndex + 1;
-      matches += 1;
-      lastMatchedTranscriptIndex = index;
+    if (lookaheadMatch) {
+      confirmedIndex = lookaheadMatch.confirmedIndex;
+      scriptCursor = lookaheadMatch.nextScriptCursor;
+      matches += lookaheadMatch.matchedUnits;
+      lastMatchedTranscriptIndex = lookaheadMatch.lastTranscriptIndex;
+      index = lookaheadMatch.lastTranscriptIndex;
     }
   }
 
@@ -213,24 +219,71 @@ function matchAtPosition({
   return null;
 }
 
-function findLookaheadMatch(
-  scriptTokens: ScriptToken[],
-  scriptCursor: number,
-  transcriptToken: string,
-): number {
+function findLookaheadMatch({
+  scriptTokens,
+  transcriptTokens,
+  scriptCursor,
+  transcriptIndex,
+}: MatchAtPositionParams): MatchAtPositionResult | null {
   const MAX_SKIP = 2;
+  const MIN_CONSECUTIVE_MATCHES = 2;
 
   for (
     let candidateIndex = scriptCursor + 1;
     candidateIndex <= Math.min(scriptCursor + MAX_SKIP, scriptTokens.length - 1);
     candidateIndex += 1
   ) {
-    if (scriptTokens[candidateIndex]?.normalized === transcriptToken) {
-      return candidateIndex;
+    let matchedUnits = 0;
+    let nextScriptCursor = candidateIndex;
+    let nextTranscriptIndex = transcriptIndex;
+
+    while (
+      scriptTokens[nextScriptCursor]?.normalized &&
+      transcriptTokens[nextTranscriptIndex] &&
+      scriptTokens[nextScriptCursor].normalized === transcriptTokens[nextTranscriptIndex]
+    ) {
+      matchedUnits += 1;
+      nextScriptCursor += 1;
+      nextTranscriptIndex += 1;
+    }
+
+    if (
+      matchedUnits >= MIN_CONSECUTIVE_MATCHES ||
+      isRepeatedWordBridge({
+        scriptTokens,
+        scriptCursor,
+        candidateIndex,
+        matchedUnits,
+      })
+    ) {
+      return {
+        confirmedIndex: nextScriptCursor - 1,
+        nextScriptCursor,
+        lastTranscriptIndex: nextTranscriptIndex - 1,
+        matchedUnits,
+      };
     }
   }
 
-  return -1;
+  return null;
+}
+
+function isRepeatedWordBridge({
+  scriptTokens,
+  scriptCursor,
+  candidateIndex,
+  matchedUnits,
+}: {
+  scriptTokens: ScriptToken[];
+  scriptCursor: number;
+  candidateIndex: number;
+  matchedUnits: number;
+}): boolean {
+  return (
+    matchedUnits === 1 &&
+    candidateIndex === scriptCursor + 1 &&
+    scriptTokens[scriptCursor - 1]?.normalized === scriptTokens[scriptCursor]?.normalized
+  );
 }
 
 function compactToken(value: string): string {
