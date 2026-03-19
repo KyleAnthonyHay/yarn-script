@@ -1,4 +1,9 @@
 import type { ScriptToken } from "@/lib/transcription/alignment";
+import {
+  buildTeleprompterLines,
+  getConfirmedIndexForLine,
+  type TeleprompterLine,
+} from "@/lib/teleprompter/teleprompterLines";
 
 interface PlaybackState {
   activeLineIndex: number;
@@ -9,27 +14,18 @@ interface PlaybackState {
 export class TeleprompterPlaybackFacade {
   constructor(private readonly wordsPerLine: number) {}
 
-  buildLines(scriptTokens: ScriptToken[]): ScriptToken[][] {
-    const lines: ScriptToken[][] = [];
-    let currentLine: ScriptToken[] = [];
-
-    for (const token of scriptTokens) {
-      currentLine.push(token);
-      if (currentLine.length === this.wordsPerLine) {
-        lines.push(currentLine);
-        currentLine = [];
-      }
-    }
-
-    if (currentLine.length > 0) {
-      lines.push(currentLine);
-    }
-
-    return lines;
+  buildLines(scriptTokens: ScriptToken[]): TeleprompterLine[] {
+    return buildTeleprompterLines(scriptTokens, this.wordsPerLine);
   }
 
-  getPlaybackState(scriptTokens: ScriptToken[], lines: ScriptToken[][], confirmedIndex: number): PlaybackState {
-    const spokenCount = Math.max(0, confirmedIndex + 1);
+  getPlaybackState(
+    scriptTokens: ScriptToken[],
+    lines: TeleprompterLine[],
+    currentLineIndex: number,
+    confirmedIndex: number,
+  ): PlaybackState {
+    const semanticConfirmedIndex = getConfirmedIndexForLine(lines, currentLineIndex);
+    const spokenCount = Math.max(0, Math.max(confirmedIndex, semanticConfirmedIndex) + 1);
     const isComplete = scriptTokens.length > 0 && spokenCount >= scriptTokens.length;
 
     if (lines.length === 0) {
@@ -40,12 +36,9 @@ export class TeleprompterPlaybackFacade {
       };
     }
 
-    const activeLineIndex = lines.findIndex((line) =>
-      line.some((token) => token.index > confirmedIndex),
-    );
-
     return {
-      activeLineIndex: activeLineIndex === -1 ? lines.length - 1 : activeLineIndex,
+      activeLineIndex:
+        currentLineIndex >= 0 ? Math.min(currentLineIndex, lines.length - 1) : lines.length - 1,
       isComplete,
       spokenCount,
     };

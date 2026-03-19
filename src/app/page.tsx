@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAssemblyAiStreaming } from "@/hooks/useAssemblyAiStreaming";
 import { TeleprompterPlaybackFacade } from "@/lib/teleprompter/TeleprompterPlaybackFacade";
+import {
+  normalizeScriptWhitespace,
+  tokenizeScript,
+} from "@/lib/transcription/alignment";
 import styles from "./page.module.css";
 
 type View = "input" | "teleprompter";
@@ -23,28 +27,29 @@ export default function Home() {
   const [highlightMode, setHighlightMode] = useState<HighlightMode>("off");
   const [textSize, setTextSize] = useState<TextSize>("M");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftScriptTokens = useMemo(() => tokenizeScript(script), [script]);
+  const lines = useMemo(() => playbackFacade.buildLines(draftScriptTokens), [draftScriptTokens]);
 
   const {
     state,
     error,
     transcript,
+    currentLineIndex,
     startSession,
     stopSession,
     resetSession,
     seekToIndex,
     setScript: syncTranscriptScript,
-  } = useAssemblyAiStreaming(script);
+  } = useAssemblyAiStreaming(script, lines, WORDS_PER_LINE);
 
   const { scriptTokens, liveAlignment } = transcript;
   const displayConfirmedIndex = liveAlignment.confirmedIndex;
 
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const scrollAnimationFrameRef = useRef<number | null>(null);
-
-  const lines = useMemo(() => playbackFacade.buildLines(scriptTokens), [scriptTokens]);
   const { activeLineIndex, isComplete, spokenCount } = useMemo(
-    () => playbackFacade.getPlaybackState(scriptTokens, lines, displayConfirmedIndex),
-    [scriptTokens, lines, displayConfirmedIndex],
+    () => playbackFacade.getPlaybackState(scriptTokens, lines, currentLineIndex, displayConfirmedIndex),
+    [scriptTokens, lines, currentLineIndex, displayConfirmedIndex],
   );
 
   useEffect(() => {
@@ -101,6 +106,12 @@ export default function Home() {
     };
   }, [view, activeLineIndex, textSize]);
 
+  function updateScript(nextScript: string) {
+    const normalizedScript = normalizeScriptWhitespace(nextScript);
+    setScript(normalizedScript);
+    syncTranscriptScript(normalizedScript);
+  }
+
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -108,8 +119,7 @@ export default function Home() {
     reader.onload = () => {
       const text = reader.result as string;
       if (text.trim().length > 0) {
-        setScript(text);
-        syncTranscriptScript(text);
+        updateScript(text);
       }
     };
     reader.readAsText(file);
@@ -137,7 +147,8 @@ export default function Home() {
     seekToIndex(index);
   }
 
-  const isSessionActive = state === "connecting" || state === "listening";
+  const isSessionActive =
+    state === "preparing" || state === "connecting" || state === "listening";
   const canStart = script.trim().length > 0 && !isSessionActive;
 
   if (view === "input") {
@@ -160,8 +171,7 @@ export default function Home() {
                 className={styles.textarea}
                 value={script}
                 onChange={(e) => {
-                  setScript(e.target.value);
-                  syncTranscriptScript(e.target.value);
+                  updateScript(e.target.value);
                 }}
                 placeholder="Paste transcript here"
                 spellCheck={false}
@@ -194,7 +204,7 @@ export default function Home() {
               onClick={handleStart}
               disabled={!canStart}
             >
-              Read Back Transcript
+              {state === "preparing" ? "Preparing Script..." : "Read Back Transcript"}
             </button>
 
             {error && <p className={styles.errorText}>{error}</p>}
@@ -218,7 +228,14 @@ export default function Home() {
           <div className={styles.statusPill} data-state={state}>
             <span className={styles.statusDot} data-state={state} />
             <span>
-              {{ idle: "Ready", connecting: "Connecting", listening: "Listening", error: "Error", stopped: "Done" }[state]}
+              {{
+                idle: "Ready",
+                preparing: "Preparing script",
+                connecting: "Connecting",
+                listening: "Listening",
+                error: "Error",
+                stopped: "Done",
+              }[state]}
             </span>
           </div>
 
@@ -266,72 +283,85 @@ export default function Home() {
           </div>
         </header>
 
-        <div
-          className={styles.teleprompter}
-          ref={teleprompterRef}
-          data-size={textSize}
-          data-highlight-mode={highlightMode}
-        >
-          <div className={styles.teleprompterSpacer} />
-          {lines.length > 0 ? (
-            lines.map((line, lineIdx) => {
-              const isActive =
-                lineIdx === activeLineIndex ||
-                (activeLineIndex === -1 && lineIdx === lines.length - 1);
-              const isPast =
-                activeLineIndex !== -1
-                  ? lineIdx < activeLineIndex
-                  : true;
-              const isFuture = activeLineIndex !== -1 && lineIdx > activeLineIndex;
-              const distanceFromActive = activeLineIndex !== -1 ? Math.abs(lineIdx - activeLineIndex) : 0;
-              const isVisible = distanceFromActive <= VISIBLE_LINES;
+        {state === "preparing" ? (
+          <div className={styles.preparingView}>
+            <div className={styles.preparingCard}>
+              <div className={styles.preparingSpinner} aria-hidden="true" />
+              <h2 className={styles.preparingTitle}>Preparing script</h2>
+              <p className={styles.preparingText}>
+                Building the semantic index before the teleprompter starts so jumps
+                can follow meaning, not just exact words.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div
+            className={styles.teleprompter}
+            ref={teleprompterRef}
+            data-size={textSize}
+            data-highlight-mode={highlightMode}
+          >
+            <div className={styles.teleprompterSpacer} />
+            {lines.length > 0 ? (
+              lines.map((line, lineIdx) => {
+                const isActive =
+                  lineIdx === activeLineIndex ||
+                  (activeLineIndex === -1 && lineIdx === lines.length - 1);
+                const isPast =
+                  activeLineIndex !== -1
+                    ? lineIdx < activeLineIndex
+                    : true;
+                const isFuture = activeLineIndex !== -1 && lineIdx > activeLineIndex;
+                const distanceFromActive = activeLineIndex !== -1 ? Math.abs(lineIdx - activeLineIndex) : 0;
+                const isVisible = distanceFromActive <= VISIBLE_LINES;
 
-              return (
-                <div
-                  key={lineIdx}
-                  className={styles.teleprompterLine}
-                  data-line-idx={lineIdx}
-                  data-line-active={isActive ? "true" : "false"}
-                  data-line-past={isPast && !isActive ? "true" : "false"}
-                  data-line-future={isFuture ? "true" : "false"}
-                  data-line-visible={isVisible ? "true" : "false"}
-                >
-                  {line.map((token) => {
-                    const isSpoken =
-                      highlightMode === "off"
-                        ? true
-                        : isPast || isActive;
+                return (
+                  <div
+                    key={lineIdx}
+                    className={styles.teleprompterLine}
+                    data-line-idx={lineIdx}
+                    data-line-active={isActive ? "true" : "false"}
+                    data-line-past={isPast && !isActive ? "true" : "false"}
+                    data-line-future={isFuture ? "true" : "false"}
+                    data-line-visible={isVisible ? "true" : "false"}
+                  >
+                    {line.tokens.map((token) => {
+                      const isSpoken =
+                        highlightMode === "off"
+                          ? true
+                          : isPast || isActive;
 
-                    return (
-                      <button
-                        type="button"
-                        key={token.index}
-                        className={`${styles.wordButton} ${
-                          isSpoken ? styles.spokenWord : styles.pendingWord
-                        }`}
-                        onClick={() => handleSeek(token.index)}
-                      >
-                        {token.raw.trimEnd()}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })
-          ) : (
-            <p className={styles.emptyState}>No script loaded.</p>
-          )}
-          {isComplete && (
-            <button
-              type="button"
-              className={styles.rewindButton}
-              onClick={handleRewind}
-            >
-              Rewind
-            </button>
-          )}
-          <div className={styles.teleprompterSpacer} />
-        </div>
+                      return (
+                        <button
+                          type="button"
+                          key={token.index}
+                          className={`${styles.wordButton} ${
+                            isSpoken ? styles.spokenWord : styles.pendingWord
+                          }`}
+                          onClick={() => handleSeek(token.index)}
+                        >
+                          {token.raw.trimEnd()}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })
+            ) : (
+              <p className={styles.emptyState}>No script loaded.</p>
+            )}
+            {isComplete && (
+              <button
+                type="button"
+                className={styles.rewindButton}
+                onClick={handleRewind}
+              >
+                Rewind
+              </button>
+            )}
+            <div className={styles.teleprompterSpacer} />
+          </div>
+        )}
 
         <div className={styles.progressBar}>
           <div

@@ -1,5 +1,6 @@
 import {
   computeAlignment,
+  normalizeScriptWhitespace,
   tokenizeScript,
   type AlignmentResult,
   type ScriptToken,
@@ -46,12 +47,14 @@ export class TranscriptManager {
   }
 
   setScript(script: string) {
-    if (script === this.script) {
+    const normalizedScript = normalizeScriptWhitespace(script);
+
+    if (normalizedScript === this.script) {
       return;
     }
 
-    this.script = script;
-    this.scriptTokens = tokenizeScript(script);
+    this.script = normalizedScript;
+    this.scriptTokens = tokenizeScript(normalizedScript);
     this.resetTranscriptState();
   }
 
@@ -74,6 +77,23 @@ export class TranscriptManager {
       transcriptTokens: [],
     };
     this.liveAlignment = this.alignment;
+  }
+
+  promoteConfirmedIndex(index: number) {
+    const clampedIndex = Math.max(-1, Math.min(index, this.scriptTokens.length - 1));
+
+    if (clampedIndex <= this.alignment.confirmedIndex) {
+      return;
+    }
+
+    this.alignment = {
+      ...this.alignment,
+      confirmedIndex: clampedIndex,
+    };
+    this.liveAlignment = {
+      ...this.liveAlignment,
+      confirmedIndex: Math.max(this.liveAlignment.confirmedIndex, clampedIndex),
+    };
   }
 
   applyTurn(turn: TranscriptManagerTurn) {

@@ -103,14 +103,14 @@
   height: 36px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: var(--surface-raised);
+  background: #1d1d1e;
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .uploadChip:hover {
-  background: var(--surface-hover);
+  background: #252527;
   border-color: var(--border-focus);
   color: var(--text-primary);
 }
@@ -314,6 +314,12 @@
   background: rgba(255, 213, 128, 0.06);
 }
 
+.statusPill[data-state="preparing"] {
+  color: #91d7ff;
+  border-color: rgba(145, 215, 255, 0.25);
+  background: rgba(145, 215, 255, 0.06);
+}
+
 .statusPill[data-state="error"] {
   color: #ff8888;
   border-color: rgba(255, 136, 136, 0.25);
@@ -337,6 +343,48 @@
 }
 
 /* ─── TELEPROMPTER CONTENT ─── */
+
+.preparingView {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.preparingCard {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+}
+
+.preparingSpinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--accent);
+  animation: spin 900ms linear infinite;
+}
+
+.preparingTitle {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.preparingText {
+  max-width: 42ch;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
 
 .teleprompter {
   flex: 1;
@@ -380,16 +428,27 @@
 }
 
 .teleprompterLine[data-line-past="true"] {
-  opacity: 0.85;
+  opacity: 0.97;
   transform: scale(0.96);
 }
 
 .teleprompterLine[data-line-future="true"] {
-  opacity: 0.4;
+  opacity: 0.92;
 }
 
 .teleprompterLine[data-line-visible="false"] {
-  opacity: 0.08;
+  opacity: 0.62;
+}
+
+.teleprompterLine[data-line-future="true"]:hover,
+.teleprompterLine[data-line-future="true"]:focus-within {
+  opacity: 0.97;
+  transform: scale(1.01);
+}
+
+.teleprompterLine[data-line-visible="false"]:hover,
+.teleprompterLine[data-line-visible="false"]:focus-within {
+  opacity: 0.88;
 }
 
 .teleprompter[data-highlight-mode="off"] .teleprompterLine {
@@ -439,6 +498,10 @@
   background: var(--surface-hover);
   border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-1px);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ─── PROGRESS BAR ─── */

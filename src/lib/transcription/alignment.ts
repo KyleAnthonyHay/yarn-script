@@ -29,6 +29,10 @@ export function normalizeText(text: string): string {
     .trim();
 }
 
+export function normalizeScriptWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
 export function normalizeToken(token: string): string {
   return normalizeText(token);
 }
