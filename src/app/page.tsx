@@ -1,25 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAssemblyAiStreaming } from "@/hooks/useAssemblyAiStreaming";
+import { TeleprompterPlaybackFacade } from "@/lib/teleprompter/TeleprompterPlaybackFacade";
 import styles from "./page.module.css";
 
 type View = "input" | "teleprompter";
 type TextSize = "S" | "M" | "L";
-type HighlightMode = "off" | "line" | "word";
+type HighlightMode = "off" | "on";
 const TEXT_SIZES: TextSize[] = ["S", "M", "L"];
-const HIGHLIGHT_MODES: HighlightMode[] = ["off", "line", "word"];
 
 const WORDS_PER_LINE = 5;
 const VISIBLE_LINES = 4;
+const SCROLL_DURATION_MS = 650;
 
-const DEFAULT_SCRIPT = `Welcome to YarnScript. Paste your script, tap read back transcript, and start speaking. As AssemblyAI transcribes your voice, the words you have already said will turn bright. You can go off script, skip words, or ad-lib and the teleprompter will keep up with you. The goal is to make reading feel natural and effortless, so you can focus on delivery instead of losing your place.`;
+const DEFAULT_SCRIPT = `Welcome to YarnScript. Paste your script, tap read back transcript, and start speaking. As AssemblyAI transcribes your voice, the words you have already said will turn bright. You can go off script, skip words, or ad-lib and the teleprompter will keep up with you. The goal is to make reading feel natural and effortless, so you can focus on delivery instead of losing your place. If you need to jump ahead or go back, just click any word and the teleprompter will reposition to that spot. The highlight will follow along from wherever you tapped, so you never lose your flow. Try changing the text size with the controls at the top of the screen, or toggle the highlight mode on and off to see which style works best for you. When you are finished reading, hit the stop button and the session will end cleanly. You can restart at any time to begin a fresh take from the top of your script.`;
+const playbackFacade = new TeleprompterPlaybackFacade(WORDS_PER_LINE);
 
 export default function Home() {
   const [view, setView] = useState<View>("input");
   const [script, setScript] = useState(DEFAULT_SCRIPT);
   const [highlightMode, setHighlightMode] = useState<HighlightMode>("off");
-  const [textSize, setTextSize] = useState<TextSize>("S");
+  const [textSize, setTextSize] = useState<TextSize>("M");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -29,48 +31,28 @@ export default function Home() {
     startSession,
     stopSession,
     resetSession,
+    seekToIndex,
     setScript: syncTranscriptScript,
   } = useAssemblyAiStreaming(script);
 
-  const { scriptTokens, alignment } = transcript;
-  const spokenCount = alignment.confirmedIndex + 1;
-  const isComplete = scriptTokens.length > 0 && spokenCount >= scriptTokens.length;
+  const { scriptTokens, liveAlignment } = transcript;
+  const displayConfirmedIndex = liveAlignment.confirmedIndex;
 
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const scrollAnimationFrameRef = useRef<number | null>(null);
 
-  const lines: { index: number; raw: string }[][] = [];
-  let currentLine: { index: number; raw: string }[] = [];
-  for (const token of scriptTokens) {
-    currentLine.push(token);
-    if (currentLine.length === WORDS_PER_LINE) {
-      lines.push(currentLine);
-      currentLine = [];
-    }
-  }
-  if (currentLine.length > 0) lines.push(currentLine);
-
-  const activeLineIndex = lines.findIndex((line) =>
-    line.some((t) => t.index > alignment.confirmedIndex),
+  const lines = useMemo(() => playbackFacade.buildLines(scriptTokens), [scriptTokens]);
+  const { activeLineIndex, isComplete, spokenCount } = useMemo(
+    () => playbackFacade.getPlaybackState(scriptTokens, lines, displayConfirmedIndex),
+    [scriptTokens, lines, displayConfirmedIndex],
   );
 
-  const spokenOnActiveLine =
-    activeLineIndex >= 0
-      ? lines[activeLineIndex].filter((t) => t.index <= alignment.confirmedIndex).length
-      : 0;
-  const activeLineLength = activeLineIndex >= 0 ? lines[activeLineIndex].length : 1;
-  const pastMidpoint = spokenOnActiveLine >= Math.ceil(activeLineLength / 2);
-
-  const scrollTargetIndex = pastMidpoint && activeLineIndex < lines.length - 1
-    ? activeLineIndex + 1
-    : activeLineIndex;
-
   useEffect(() => {
-    if (view !== "teleprompter" || !teleprompterRef.current) return;
+    if (view !== "teleprompter" || !teleprompterRef.current || activeLineIndex < 0) return;
 
     const container = teleprompterRef.current;
     const target = container.querySelector<HTMLElement>(
-      `[data-line-idx="${scrollTargetIndex}"]`,
+      `[data-line-idx="${activeLineIndex}"]`,
     );
 
     if (!target) return;
@@ -79,22 +61,26 @@ export default function Home() {
       cancelAnimationFrame(scrollAnimationFrameRef.current);
     }
 
-    const targetScrollTop =
+    const centeredScrollTop =
       target.offsetTop - container.clientHeight / 2 + target.clientHeight / 2;
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const targetScrollTop = Math.max(0, Math.min(centeredScrollTop, maxScrollTop));
     const startScrollTop = container.scrollTop;
     const distance = targetScrollTop - startScrollTop;
-    const duration = 420;
+
+    if (Math.abs(distance) < 4) {
+      container.scrollTop = targetScrollTop;
+      return;
+    }
+
     const startTime = performance.now();
 
-    const easeInOutCubic = (progress: number) =>
-      progress < 0.5
-        ? 4 * progress * progress * progress
-        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+    const easeOutQuart = (t: number) => 1 - Math.pow(1 - t, 4);
 
     const animateScroll = (currentTime: number) => {
       const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const easedProgress = easeInOutCubic(progress);
+      const progress = Math.min(elapsed / SCROLL_DURATION_MS, 1);
+      const easedProgress = easeOutQuart(progress);
 
       container.scrollTop = startScrollTop + distance * easedProgress;
 
@@ -113,7 +99,7 @@ export default function Home() {
         scrollAnimationFrameRef.current = null;
       }
     };
-  }, [view, scrollTargetIndex, textSize]);
+  }, [view, activeLineIndex, textSize]);
 
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -145,6 +131,10 @@ export default function Home() {
     if (teleprompterRef.current) {
       teleprompterRef.current.scrollTo({ top: 0, behavior: "smooth" });
     }
+  }
+
+  function handleSeek(index: number) {
+    seekToIndex(index);
   }
 
   const isSessionActive = state === "connecting" || state === "listening";
@@ -247,19 +237,16 @@ export default function Home() {
               ))}
             </div>
 
-            <div className={styles.modePicker}>
-              {HIGHLIGHT_MODES.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={styles.modeOption}
-                  data-active={highlightMode === mode ? "true" : "false"}
-                  onClick={() => setHighlightMode(mode)}
-                >
-                  {mode[0].toUpperCase() + mode.slice(1)}
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              className={styles.highlightToggle}
+              data-active={highlightMode === "on" ? "true" : "false"}
+              onClick={() =>
+                setHighlightMode((currentMode) => (currentMode === "on" ? "off" : "on"))
+              }
+            >
+              {highlightMode === "on" ? "Highlight On" : "Highlight Off"}
+            </button>
 
             {isSessionActive && (
               <button type="button" className={styles.stopButton} onClick={stopSession}>
@@ -313,19 +300,19 @@ export default function Home() {
                     const isSpoken =
                       highlightMode === "off"
                         ? true
-                        : highlightMode === "word"
-                        ? token.index <= alignment.confirmedIndex
-                        : highlightMode === "line"
-                          ? isPast || isActive
-                          : false;
+                        : isPast || isActive;
 
                     return (
-                      <span
+                      <button
+                        type="button"
                         key={token.index}
-                        className={isSpoken ? styles.spokenWord : styles.pendingWord}
+                        className={`${styles.wordButton} ${
+                          isSpoken ? styles.spokenWord : styles.pendingWord
+                        }`}
+                        onClick={() => handleSeek(token.index)}
                       >
-                        {token.raw}
-                      </span>
+                        {token.raw.trimEnd()}
+                      </button>
                     );
                   })}
                 </div>

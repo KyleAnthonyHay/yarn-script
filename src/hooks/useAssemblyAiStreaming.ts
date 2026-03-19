@@ -47,6 +47,7 @@ interface UseAssemblyAiStreamingResult {
   startSession: () => Promise<void>;
   stopSession: () => void;
   resetSession: () => void;
+  seekToIndex: (index: number) => void;
   setScript: (script: string) => void;
 }
 
@@ -55,6 +56,12 @@ const EMPTY_SNAPSHOT: TranscriptManagerSnapshot = {
   stableTranscript: "",
   partialTranscript: "",
   alignment: {
+    confirmedIndex: -1,
+    matchedPhrase: "",
+    confidence: 0,
+    transcriptTokens: [],
+  },
+  liveAlignment: {
     confirmedIndex: -1,
     matchedPhrase: "",
     confidence: 0,
@@ -206,6 +213,11 @@ export function useAssemblyAiStreaming(initialScript = ""): UseAssemblyAiStreami
     setState("idle");
   }
 
+  function seekToIndex(index: number) {
+    transcriptManagerRef.current.seekToIndex(index);
+    setTranscript(transcriptManagerRef.current.getSnapshot());
+  }
+
   function handleMessage(message: AssemblyAiMessage) {
     if (message.type === "Begin") {
       setState("listening");
@@ -238,6 +250,7 @@ export function useAssemblyAiStreaming(initialScript = ""): UseAssemblyAiStreami
     startSession,
     stopSession,
     resetSession,
+    seekToIndex,
     setScript,
   };
 

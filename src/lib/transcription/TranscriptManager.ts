@@ -10,6 +10,7 @@ export interface TranscriptManagerSnapshot {
   stableTranscript: string;
   partialTranscript: string;
   alignment: AlignmentResult;
+  liveAlignment: AlignmentResult;
 }
 
 export interface TranscriptManagerTurn {
@@ -37,6 +38,7 @@ export class TranscriptManager {
   private finalizedTurns: string[] = [];
   private partialFinalWords = "";
   private alignment: AlignmentResult = EMPTY_ALIGNMENT;
+  private liveAlignment: AlignmentResult = EMPTY_ALIGNMENT;
   private lastCommittedTurn = "";
 
   constructor(script = "") {
@@ -55,6 +57,23 @@ export class TranscriptManager {
 
   resetSession() {
     this.resetTranscriptState();
+  }
+
+  seekToIndex(index: number) {
+    const clampedIndex = Math.max(-1, Math.min(index, this.scriptTokens.length - 1));
+
+    this.stableTranscript = "";
+    this.partialTranscript = "";
+    this.finalizedTurns = [];
+    this.partialFinalWords = "";
+    this.lastCommittedTurn = "";
+    this.alignment = {
+      confirmedIndex: clampedIndex,
+      matchedPhrase: "",
+      confidence: 0,
+      transcriptTokens: [],
+    };
+    this.liveAlignment = this.alignment;
   }
 
   applyTurn(turn: TranscriptManagerTurn) {
@@ -86,6 +105,11 @@ export class TranscriptManager {
       this.stableTranscript,
       this.alignment.confirmedIndex,
     );
+    this.liveAlignment = computeAlignment(
+      this.scriptTokens,
+      this.getLiveTranscript(displayText),
+      this.alignment.confirmedIndex,
+    );
   }
 
   getSnapshot(): TranscriptManagerSnapshot {
@@ -94,6 +118,7 @@ export class TranscriptManager {
       stableTranscript: this.stableTranscript,
       partialTranscript: this.partialTranscript,
       alignment: this.alignment,
+      liveAlignment: this.liveAlignment,
     };
   }
 
@@ -109,6 +134,7 @@ export class TranscriptManager {
       confidence: 0,
       transcriptTokens: [],
     };
+    this.liveAlignment = this.alignment;
   }
 
   private extractStableTurnText(turn: TranscriptManagerTurn): string {
@@ -132,5 +158,16 @@ export class TranscriptManager {
       .join(" ")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  private getLiveTranscript(displayText: string): string {
+    if (!displayText) {
+      return this.stableTranscript;
+    }
+
+    return this.joinTranscriptParts([
+      ...this.finalizedTurns,
+      displayText,
+    ]);
   }
 }

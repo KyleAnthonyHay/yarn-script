@@ -19,6 +19,22 @@ describe("TranscriptManager", () => {
     expect(snapshot.stableTranscript).toBe("we should build");
     expect(snapshot.partialTranscript).toBe("we should build");
     expect(snapshot.alignment.confirmedIndex).toBe(2);
+    expect(snapshot.liveAlignment.confirmedIndex).toBe(2);
+  });
+
+  it("uses the partial transcript for low-latency display alignment", () => {
+    const manager = new TranscriptManager("we should build a live teleprompter");
+
+    manager.applyTurn({
+      transcript: "we should build a live",
+    });
+
+    const snapshot = manager.getSnapshot();
+
+    expect(snapshot.stableTranscript).toBe("");
+    expect(snapshot.partialTranscript).toBe("we should build a live");
+    expect(snapshot.alignment.confirmedIndex).toBe(-1);
+    expect(snapshot.liveAlignment.confirmedIndex).toBe(4);
   });
 
   it("commits finalized turns once and ignores duplicate end-of-turn payloads", () => {
