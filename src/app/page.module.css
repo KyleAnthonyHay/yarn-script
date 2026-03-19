@@ -1,0 +1,349 @@
+.page {
+  min-height: 100vh;
+  padding: 40px;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.hero h1 {
+  max-width: 12ch;
+  font-size: clamp(2.8rem, 5vw, 5.6rem);
+  line-height: 0.95;
+  letter-spacing: -0.06em;
+}
+
+.eyebrow,
+.panelEyebrow,
+.statusLabel,
+.debugLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.statusCard,
+.panel,
+.debugCard {
+  border: 1px solid var(--border-color);
+  background: rgba(7, 10, 15, 0.7);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+}
+
+.statusCard {
+  position: relative;
+  min-width: 180px;
+  display: grid;
+  gap: 6px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  border-color: rgba(255, 255, 255, 0.1);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.statusCard[data-state="idle"],
+.statusCard[data-state="stopped"] {
+  background: rgba(7, 10, 15, 0.7);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.statusCard[data-state="connecting"] {
+  background: rgba(245, 185, 79, 0.14);
+  border-color: rgba(245, 185, 79, 0.4);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(245, 185, 79, 0.12);
+}
+
+.statusCard[data-state="listening"] {
+  background: rgba(255, 91, 91, 0.16);
+  border-color: rgba(255, 91, 91, 0.42);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 91, 91, 0.14);
+}
+
+.statusCard[data-state="error"] {
+  background: rgba(255, 124, 136, 0.16);
+  border-color: rgba(255, 124, 136, 0.42);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(255, 124, 136, 0.14);
+}
+
+.statusCard strong {
+  transition: color 160ms ease;
+}
+
+.statusCard[data-state="connecting"] strong {
+  color: #ffe19b;
+}
+
+.statusCard[data-state="listening"] strong {
+  color: #ffd2d2;
+}
+
+.statusCard[data-state="error"] strong {
+  color: #ffc5cb;
+}
+
+.statusDot {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #666;
+  box-shadow: 0 0 18px currentColor;
+}
+
+.statusDot[data-state="idle"],
+.statusDot[data-state="stopped"] {
+  color: #727272;
+}
+
+.statusDot[data-state="connecting"] {
+  color: #f5b94f;
+}
+
+.statusDot[data-state="listening"] {
+  color: #5cffb7;
+}
+
+.statusDot[data-state="error"] {
+  color: #ff7c88;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(320px, 1.2fr);
+  gap: 24px;
+}
+
+.panel {
+  border-radius: 28px;
+  padding: 28px;
+}
+
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.panelHeader h2 {
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
+.textareaWrap {
+  position: relative;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 360px;
+  padding: 24px 24px 72px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  resize: vertical;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.pasteButton,
+.primaryButton,
+.secondaryButton {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease,
+    background 120ms ease;
+}
+
+.pasteButton:hover,
+.primaryButton:hover,
+.secondaryButton:hover {
+  transform: translateY(-1px);
+}
+
+.pasteButton:disabled,
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.pasteButton {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #fff2;
+  color: var(--text-primary);
+}
+
+.primaryButton {
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff9d5c, #ffe26f);
+  color: #151515;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.secondaryButton {
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.metaRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.hintText,
+.errorText {
+  margin-top: 14px;
+  font-size: 0.95rem;
+}
+
+.hintText {
+  color: var(--text-muted);
+}
+
+.errorText {
+  color: #ff8893;
+}
+
+.teleprompter {
+  min-height: 360px;
+  border-radius: 24px;
+  padding: 28px;
+  background:
+    radial-gradient(circle at top, rgba(255, 165, 92, 0.12), transparent 42%),
+    rgba(255, 255, 255, 0.03);
+  font-size: clamp(1.8rem, 2.2vw, 2.8rem);
+  line-height: 1.5;
+  letter-spacing: -0.03em;
+}
+
+.spokenToken,
+.pendingToken {
+  transition: color 120ms ease;
+}
+
+.spokenToken {
+  color: var(--text-primary);
+}
+
+.pendingToken {
+  color: var(--text-dim);
+}
+
+.emptyState {
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.debugGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.debugCard {
+  min-height: 96px;
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.debugCard p {
+  margin-top: 10px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+@media (max-width: 1024px) {
+  .page {
+    padding: 24px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    flex-direction: column;
+  }
+
+  .statusCard {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: 20px;
+  }
+
+  .panelHeader,
+  .metaRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .primaryButton,
+  .secondaryButton {
+    width: 100%;
+  }
+
+  .debugGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .teleprompter {
+    padding: 22px;
+  }
+}
